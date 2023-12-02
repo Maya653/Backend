@@ -70,15 +70,24 @@ async def obtener_contacto(email: str):
     else:
         return JSONResponse(content={}, status_code=404)
 
+from fastapi import HTTPException
+
 @app.put("/contactos/{email}")
 async def actualizar_contacto(email: str, contacto: Contacto):
     """Actualiza un contacto."""
-    # TODO Actualiza el contacto en la base de datos
-    c = conn.cursor()
-    c.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
-              (contacto.nombre, contacto.telefono, email))
-    conn.commit()
-    return contacto
+    try:
+        c = conn.cursor()
+        c.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
+                  (contacto.nombre, contacto.telefono, email))
+        conn.commit()
+
+        if c.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Contacto no encontrado")
+        
+        return contacto
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @app.delete("/contactos/{email}")
