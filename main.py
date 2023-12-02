@@ -14,7 +14,10 @@ c = conn.cursor()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8080", "http://localhost:8000"],
+    allow_origins=["http://127.0.0.1:8080",
+                    "http://localhost:8000",
+                    "https://contactos-frontend-6d58a4eb9f51.herokuapp.com",
+                    "https://contactos-backen-b4d88f351253.herokuapp.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
