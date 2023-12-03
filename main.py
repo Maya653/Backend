@@ -12,17 +12,18 @@ conn = sqlite3.connect("contactos.db")
 c = conn.cursor()
 
 
+origins = [
+    "https://contactos-frontend-6d58a4eb9f51.herokuapp.com",
+    "https://contactos-backen-b4d88f351253.herokuapp.com",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8080",
-                    "http://localhost:8000",
-                    "https://contactos-frontend-6d58a4eb9f51.herokuapp.com",
-                    "https://contactos-backen-b4d88f351253.herokuapp.com"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
                               
 class Contacto(BaseModel):
