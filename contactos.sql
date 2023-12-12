@@ -22,4 +22,4 @@ CREATE TABLE IF NOT EXISTS usuarios (
     TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO usuarios (username, password, token) VALUES ('usuario@gmail.com', '1234', 'yyyy');
+INSERT INTO usuarios (username, password, token) VALUES ('maya@gmail.com', '1234', 'kqPgId2AP_KtpMlAkotlHa1b5xOO5yiXR3g9EcYG7LU');
