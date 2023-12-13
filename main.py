@@ -1,12 +1,12 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBasic, HTTPBearer, HTTPBasicCredentials, HTTPAuthorizationCredentials, OAuth2PasswordBearer
 import sqlite3
 import secrets
 import hashlib
-from fastapi.security import HTTPBasic,HTTPBearer,HTTPBasicCredentials, HTTPAuthorizationCredentials
 
 app = FastAPI()
 
@@ -24,6 +24,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # Modelos
 class Contacto(BaseModel):
     email: str
@@ -33,6 +34,10 @@ class Contacto(BaseModel):
 class User(BaseModel):
     username: str
     password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 # Funciones de utilidad
 def generate_token():
@@ -50,84 +55,33 @@ def get_db():
     finally:
         db.close()
 
-# Rutas para las operaciones CRUD
-
-@app.get('/')
-def root():
-    return {"HOLA MUNDO"}
-
-@app.post("/contactos")
-def crear_contacto(contacto: Contacto, conn: sqlite3.Connection = Depends(get_db)):
-    """Crea un nuevo contacto."""
-    # Inserta el contacto en la base de datos y responde con un mensaje
-    with conn:
-        c = conn.cursor()
-        c.execute('INSERT INTO contactos (email, nombre, telefono) VALUES (?, ?, ?)',
-                  (contacto.email, contacto.nombre, contacto.telefono))
-        conn.commit()
-    return contacto
-
-@app.get("/contactos")
-def obtener_contactos(conn: sqlite3.Connection = Depends(get_db)):
-    """Obtiene todos los contactos."""
-    # Consulta todos los contactos de la base de datos y los envía en un JSON
-    with conn:
-        c = conn.cursor()
-        c.execute('SELECT * FROM contactos')
-        response = [{"email": row[0], "nombre": row[1], "telefono": row[2]} for row in c.fetchall()]
-    return response
-
-@app.get("/contactos/{email}")
-def obtener_contacto(email: str, conn: sqlite3.Connection = Depends(get_db)):
-    """Obtiene un contacto por su email."""
-    # Consulta el contacto por su email
-    with conn:
-        c = conn.cursor()
-        c.execute('SELECT * FROM contactos WHERE email = ?', (email,))
-        row = c.fetchone()
-    if row:
-        contacto = {"email": row[0], "nombre": row[1], "telefono": row[2]}
-        return JSONResponse(content=contacto)
-    else:
-        return JSONResponse(content={}, status_code=404)
-
-@app.put("/contactos/{email}")
-def actualizar_contacto(email: str, contacto: Contacto, conn: sqlite3.Connection = Depends(get_db)):
-    """Actualiza un contacto."""
-    try:
-        with conn:
-            c = conn.cursor()
-            c.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
-                      (contacto.nombre, contacto.telefono, email))
-            conn.commit()
-
-            if c.rowcount == 0:
-                raise HTTPException(status_code=404, detail="Contacto no encontrado")
-
-        return contacto
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/contactos/{email}")
-def eliminar_contacto(email: str, conn: sqlite3.Connection = Depends(get_db)):
-    """Elimina un contacto."""
-    # Elimina el contacto de la base de datos
-    with conn:
-        c = conn.cursor()
-        c.execute('DELETE FROM contactos WHERE email = ?', (email,))
-        conn.commit()
-    return {"elemento borrado"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str
-
 security_basic = HTTPBasic()
 security_bearer = HTTPBearer()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+@app.post("/registro")
+def register(credentials: HTTPBasicCredentials = Depends(security_basic)):
+    username = credentials.username
+    password = credentials.password
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+    # Verificar si el usuario ya existe
+    with sqlite3.connect("contactos.db") as conn:
+        c = conn.cursor()
+        c.execute("SELECT username FROM usuarios WHERE username = ?", (username,))
+        existing_user = c.fetchone()
+
+        if existing_user:
+            raise HTTPException(status_code=400, detail="El usuario ya existe")
+
+        c.execute(
+            'INSERT INTO usuarios (username, password) VALUES (?, ?)',
+            (username, hashed_password)
+        )
+        conn.commit()
+
+    return {"status": "Usuario registrado con éxito"}
 
 
 @app.get("/root")
@@ -176,20 +130,108 @@ def login(credentials: HTTPBasicCredentials = Depends(security_basic), conn: sql
         token = result[0]
         return {"access_token": token, "token_type": "bearer"}
     else:
-        raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
-
-
-@app.post("/register")
-def register(user: User, conn: sqlite3.Connection = Depends(get_db)):
-    username = user.username
-    password = user.password
+        raise HTTPException(status_code=401, detail="Tu usuario o contraseña son incorrectas verifica por favor")
     
-    token = generate_token()
-    hashed_password = hash_password(password)
+
+
+        
+# Función de dependencia para obtener el usuario actual
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security_bearer), conn: sqlite3.Connection = Depends(get_db)):
+    username_token = credentials.credentials
 
     with conn:
         c = conn.cursor()
-        c.execute("INSERT INTO usuarios (username, password, token) VALUES (?, ?, ?)", (username, hashed_password, token))
-        conn.commit()
+        c.execute("SELECT token FROM usuarios WHERE token = ?", (username_token,))
+        result = c.fetchone()
 
-    return {"message": "Usuario registrado", "token": token}
+    if result and username_token == result[0]:
+        return username_token
+    else:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión no válida")
+
+# Rutas para las operaciones CRUD
+
+@app.get('/')
+def root():
+    return {"bienvenido a mi api!"}
+
+@app.post("/contactos")
+def crear_contacto(contacto: Contacto, current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Crea un nuevo contacto."""
+    # Inserta el contacto en la base de datos y responde con un mensaje
+    with conn:
+        c = conn.cursor()
+        c.execute('INSERT INTO contactos (email, nombre, telefono) VALUES (?, ?, ?)',
+                  (contacto.email, contacto.nombre, contacto.telefono))
+        conn.commit()
+    return contacto
+
+@app.post("/logout")
+def logout(current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    # Aquí puedes realizar cualquier acción necesaria para cerrar la sesión
+    # Por ejemplo, podrías invalidar el token actual o realizar otras acciones según tu implementación
+    return {"message": "Sesión cerrada exitosamente"}
+    
+
+@app.get("/contactos")
+def obtener_contactos(current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Obtiene todos los contactos."""
+    # Consulta todos los contactos de la base de datos y los envía en un JSON
+    with conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM contactos')
+        response = [{"email": row[0], "nombre": row[1], "telefono": row[2]} for row in c.fetchall()]
+    return response
+
+@app.get("/contactos/{email}")
+def obtener_contacto(email: str, current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Obtiene un contacto por su email."""
+    # Consulta el contacto por su email
+    with conn:
+        c = conn.cursor()
+        c.execute('SELECT * FROM contactos WHERE email = ?', (email,))
+        row = c.fetchone()
+    if row:
+        contacto = {"email": row[0], "nombre": row[1], "telefono": row[2]}
+        return JSONResponse(content=contacto)
+    else:
+        return JSONResponse(content={}, status_code=404)
+
+@app.put("/contactos/{email}")
+def actualizar_contacto(email: str, contacto: Contacto, current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Actualiza un contacto."""
+    try:
+        with conn:
+            c = conn.cursor()
+            c.execute('UPDATE contactos SET nombre = ?, telefono = ? WHERE email = ?',
+                      (contacto.nombre, contacto.telefono, email))
+            conn.commit()
+
+            if c.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Contacto no encontrado")
+
+        return contacto
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/contactos/{email}")
+def eliminar_contacto(email: str, current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    """Elimina un contacto."""
+    # Elimina el contacto de la base de datos
+    with conn:
+        c = conn.cursor()
+        c.execute('DELETE FROM contactos WHERE email = ?', (email,))
+        conn.commit()
+    return {"elemento borrado"}
+
+
+
+
+@app.post("/logout")
+def logout(current_user: str = Depends(get_current_user), conn: sqlite3.Connection = Depends(get_db)):
+    # Aquí puedes realizar cualquier acción necesaria para cerrar la sesión
+    # Por ejemplo, podrías invalidar el token actual o realizar otras acciones según tu implementación
+    return {"message": "Sesión cerrada exitosamente"}
+
+
+

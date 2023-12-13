@@ -14,12 +14,14 @@ VALUES ('maria@example.com', 'María García', '555-678-9012');
 
 
 
---tabla de usuarios
+-- Tabla de usuarios
 CREATE TABLE IF NOT EXISTS usuarios (
-    username VARCHAR(30) NOT NULL,
-    password VARCHAR(20) NOT NULL,
-    token VARCHAR(32) UNIQUE,
-    TIMESTAMP DATETIME DEFAULT CURRENT_TIMESTAMP
+    username VARCHAR(50) PRIMARY KEY,
+    hashed_password TEXT NOT NULL,
+    token TEXT UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO usuarios (username, password, token) VALUES ('maya@gmail.com', '1234', 'kqPgId2AP_KtpMlAkotlHa1b5xOO5yiXR3g9EcYG7LU');
+-- Insertar datos de ejemplo
+INSERT INTO usuarios (username, hashed_password, token) VALUES ('maya@gmail.com', 'hashed_password_here', 'baOOpU8D-2ulZClC3KkZYgrCKeQwpanCnak4FKKXGis');
+INSERT INTO usuarios (username, hashed_password, token) VALUES ('obed@gmail.com', 'hashed_password_here', '96hZm1G-1sG_TKGjRp3_yRrrFx-afhXXgSakGBvBPoc');
